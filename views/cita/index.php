@@ -75,7 +75,14 @@ function buildErrorMessage(data){
 }
 
 async function fetchJsonOrThrow(url){
-  const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+ const res = await fetch(url, { 
+    method: 'GET',
+    credentials: 'same-origin', 
+    headers: { 
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest' 
+    }
+  });
   const text = await res.text();
   let json;
   try { json = JSON.parse(text); } catch (e) { throw new Error(text.substring(0, 220)); }
@@ -86,8 +93,10 @@ async function fetchJsonOrThrow(url){
 async function postJsonOrThrow(url, payload, csrf){
   const res = await fetch(url, {
     method: 'POST',
+    credentials: 'same-origin', 
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
       'X-CSRF-Token': csrf
     },
@@ -294,14 +303,16 @@ document.addEventListener('DOMContentLoaded', function () {
       };
 
       const res = await fetch('$createUrl', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRF-Token': '$csrfToken'
-        },
-        body: JSON.stringify(payload)
-      });
+      method: 'POST',
+      credentials: 'same-origin', // ✅
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-Token': '$csrfToken'
+      },
+      body: JSON.stringify(payload)
+    });
 
       const text = await res.text();
       let data;

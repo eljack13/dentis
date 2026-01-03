@@ -290,4 +290,26 @@ class Cita extends \yii\db\ActiveRecord
     {
         $this->canal = self::CANAL_DENTISTA;
     }
+
+    /**
+     * Evento después de insertar una cita
+     */
+    public function afterInsert()
+    {
+        parent::afterInsert();
+
+        try {
+            // Debug: escribir en archivo
+            $debugFile = Yii::getAlias('@app/runtime/email-debug.log');
+            file_put_contents($debugFile, "[" . date('Y-m-d H:i:s') . "] afterInsert() disparado para cita ID: {$this->id}\n", FILE_APPEND);
+
+            // Enviar email de confirmación
+            $result = \app\services\EmailCitaService::enviarConfirmacionCita($this);
+
+            file_put_contents($debugFile, "[" . date('Y-m-d H:i:s') . "] Resultado: " . ($result ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
+        } catch (\Exception $e) {
+            $debugFile = Yii::getAlias('@app/runtime/email-debug.log');
+            file_put_contents($debugFile, "[" . date('Y-m-d H:i:s') . "] ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+        }
+    }
 }

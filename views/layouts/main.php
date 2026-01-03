@@ -16,7 +16,7 @@ $isLoggedIn = !Yii::$app->user->isGuest;
 $this->registerCsrfMetaTags();
 $this->registerMetaTag(['charset' => Yii::$app->charset], 'charset');
 $this->registerMetaTag(['name' => 'viewport', 'content' => 'width=device-width, initial-scale=1']);
-$this->registerLinkTag(['rel' => 'icon', 'type' => 'image/x-icon', 'href' => Yii::getAlias('@web/favicon.ico')]);
+$this->registerLinkTag(['rel' => 'icon', 'type' => 'image/x-icon', 'href' => Yii::getAlias('@web/asd.ico')]);
 
 /* ===== ICONS ===== */
 $this->registerCssFile('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css');
@@ -347,7 +347,7 @@ $this->registerJsFile('https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetale
             </button>
 
             <a href="<?= Yii::$app->homeUrl ?>" class="mobile-brand">
-                <i class="bi bi-heart-pulse-fill"></i> DentisApp
+                <i class="bi bi-heart-pulse-fill"></i> Theeth Care
             </a>
 
             <div style="width: 40px;"></div>
@@ -358,7 +358,7 @@ $this->registerJsFile('https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetale
         <aside class="app-sidebar" id="sidebar">
             <a href="<?= Yii::$app->homeUrl ?>" class="app-brand d-none d-md-flex">
                 <i class="bi bi-heart-pulse-fill"></i>
-                <span class="brand-text">Dentis<span class="fw-light opacity-75">App</span></span>
+                <span class="brand-text">Theeth Care<span class="fw-light opacity-75"></span></span>
             </a>
 
             <div class="d-md-none d-flex justify-content-end mb-3">

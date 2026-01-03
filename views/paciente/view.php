@@ -268,6 +268,7 @@ $this->registerCss(<<<CSS
         justify-content: center;
         font-size: 16px;
         line-height: 1;
+        z-index: 10;
     }
     
     .photo-item:hover .photo-delete { 
@@ -277,6 +278,12 @@ $this->registerCss(<<<CSS
     .photo-delete:hover { 
         background: #dc2626;
         transform: scale(1.1);
+    }
+    
+    @media (max-width: 768px) {
+        .photo-delete {
+            opacity: 1;
+        }
     }
     
     /* Estados vacíos */
@@ -363,11 +370,23 @@ async function openPhotosModal(citaId, dateLabel) {
     // Cargar fotos
     const loadPhotos = async () => {
         const container = document.getElementById('photos-container');
+        
+        // Validar que el contenedor existe
+        if (!container) {
+            console.error('Container photos-container not found');
+            return;
+        }
+        
         container.innerHTML = '<div class="loading">Cargando fotos...</div>';
         
         try {
             const res = await fetchData('{$fotosUrl}?cita_id=' + citaId);
             const fotos = res.fotos || [];
+            
+            // Validar nuevamente antes de actualizar
+            if (!document.getElementById('photos-container')) {
+                return;
+            }
             
             container.innerHTML = renderPhotosGrid(fotos, citaId);
 
@@ -376,8 +395,11 @@ async function openPhotosModal(citaId, dateLabel) {
             lightbox = GLightbox({
                 selector: '.glightbox',
                 touchNavigation: true,
+                touchFollowAxis: true,
                 loop: true,
-                zoomable: true
+                zoomable: true,
+                draggable: true,
+                preload: true
             });
 
             // Eventos de eliminar
@@ -454,12 +476,23 @@ async function openPhotosModal(citaId, dateLabel) {
             <div id="photos-container"></div>
         `,
         didOpen: async () => {
-            await loadPhotos();
+            try {
+                await loadPhotos();
+            } catch (err) {
+                console.error('Error loading photos:', err);
+            }
 
             // Subir fotos
             document.getElementById('upload-btn').addEventListener('click', async () => {
                 const input = document.getElementById('photo-input');
                 const label = document.getElementById('photo-label');
+                const btn = document.getElementById('upload-btn');
+                
+                // Validar elementos
+                if (!input || !label || !btn) {
+                    console.error('Form elements not found');
+                    return Swal.showValidationMessage('Error: elementos del formulario no encontrados');
+                }
                 
                 if (!input.files.length) {
                     return Swal.showValidationMessage('Selecciona al menos una foto');
@@ -470,7 +503,6 @@ async function openPhotosModal(citaId, dateLabel) {
                 if (label.value) formData.append('etiqueta', label.value);
                 Array.from(input.files).forEach(f => formData.append('fotos[]', f));
 
-                const btn = document.getElementById('upload-btn');
                 btn.textContent = 'Subiendo...';
                 btn.disabled = true;
 
@@ -487,8 +519,10 @@ async function openPhotosModal(citaId, dateLabel) {
                     
                     if (!data.success) throw new Error(data.message);
 
-                    input.value = '';
-                    label.value = '';
+                    // Limpiar inputs con validación
+                    if (input) input.value = '';
+                    if (label) label.value = '';
+                    
                     await loadPhotos();
                     
                     Swal.fire({
@@ -503,8 +537,10 @@ async function openPhotosModal(citaId, dateLabel) {
                 } catch (err) {
                     Swal.fire('Error', err.message, 'error');
                 } finally {
-                    btn.textContent = 'Subir';
-                    btn.disabled = false;
+                    if (btn) {
+                        btn.textContent = 'Subir';
+                        btn.disabled = false;
+                    }
                 }
             });
         },

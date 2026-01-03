@@ -7,7 +7,7 @@ $config = [
     'id' => 'basic',
     'basePath' => dirname(__DIR__),
     'language' => 'es-MX',
-    'name' => 'Dentis',
+    'name' => 'Theeth CARE',
     'bootstrap' => ['log'],
     'aliases' => [
         '@bower' => '@vendor/bower-asset',
@@ -32,8 +32,15 @@ $config = [
         'mailer' => [
             'class' => \yii\symfonymailer\Mailer::class,
             'viewPath' => '@app/mail',
-            // send all mails to a file by default.
-            'useFileTransport' => true,
+            'useFileTransport' => false,  // ← IMPORTANTE: Cambiar a false
+            'transport' => [
+                'scheme' => 'smtp',
+                'host' => 'smtp.gmail.com',
+                'port' => 587,
+                'encryption' => 'tls',
+                'username' => 'arturo.villa.rey@gmail.com',
+                'password' => 'whup zkzx tnar wydf',  // No tu contraseña normal
+            ],
         ],
         'log' => [
             'traceLevel' => YII_DEBUG ? 3 : 0,

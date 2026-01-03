@@ -17,7 +17,7 @@ $this->registerJsFile('https://cdn.jsdelivr.net/npm/chart.js', ['position' => \y
         <h2 class="fw-bold text-dark" style="font-family: 'Segoe UI', sans-serif;">
             Hola, <?= Html::encode(Yii::$app->user->identity->nombre ?? 'Doctor') ?> 👋
         </h2>
-        <p class="text-muted">Aquí tienes el resumen de tu clínica hoy.</p>
+        <p class="text-muted">Aquí tienes el resumen hoy.</p>
     </div>
 
     <div class="row g-4 mb-5">

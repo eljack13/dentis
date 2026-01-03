@@ -10,6 +10,7 @@ use Yii;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
 use yii\filters\VerbFilter;
+use yii\filters\AccessControl;
 use yii\web\Response;
 use yii\web\BadRequestHttpException;
 use app\models\FotoSesion;
@@ -21,6 +22,15 @@ class CitaController extends Controller
     public function behaviors()
     {
         return array_merge(parent::behaviors(), [
+            'access' => [
+                'class' => AccessControl::class,
+                'rules' => [
+                    [
+                        'allow' => true,
+                        'roles' => ['@'],
+                    ],
+                ],
+            ],
             'verbs' => [
                 'class' => VerbFilter::class,
                 'actions' => [
@@ -70,23 +80,72 @@ class CitaController extends Controller
             ->orderBy(['inicio' => SORT_ASC])
             ->all();
 
+        // Paleta por estado (pro y clara)
+        $colorsByEstado = [
+            Cita::ESTADO_PENDIENTE => [
+                'bg' => '#F59E0B',
+                'border' => '#D97706',
+                'text' => '#111827'
+            ],
+            Cita::ESTADO_CONFIRMADA => [
+                'bg' => '#3B82F6',
+                'border' => '#1D4ED8',
+                'text' => '#FFFFFF'
+            ],
+            Cita::ESTADO_ATENDIDA => [
+                'bg' => '#10B981',
+                'border' => '#059669',
+                'text' => '#FFFFFF'
+            ],
+            Cita::ESTADO_NO_ASISTIO => [
+                'bg' => '#111827',
+                'border' => '#0B1220',
+                'text' => '#FFFFFF'
+            ],
+            Cita::ESTADO_CANCELADA_PACIENTE => [
+                'bg' => '#EF4444',
+                'border' => '#DC2626',
+                'text' => '#FFFFFF'
+            ],
+            Cita::ESTADO_CANCELADA_DENTISTA => [
+                'bg' => '#EF4444',
+                'border' => '#DC2626',
+                'text' => '#FFFFFF'
+            ],
+        ];
+
         $events = [];
         foreach ($citas as $c) {
+            $estado = $c->estado ?: Cita::ESTADO_PENDIENTE;
+            $pal = $colorsByEstado[$estado] ?? [
+                'bg' => '#6B7280',
+                'border' => '#4B5563',
+                'text' => '#FFFFFF'
+            ];
+
             $events[] = [
                 'id' => (string)$c->id,
                 'title' => 'Cita #' . $c->id,
                 'start' => $c->inicio,
                 'end'   => $c->fin,
+
+                // 🎨 Color por estado
+                'backgroundColor' => $pal['bg'],
+                'borderColor' => $pal['border'],
+                'textColor' => $pal['text'],
+
                 'extendedProps' => [
                     'paciente_id' => $c->paciente_id ?? null,
                     'servicio_id' => $c->servicio_id ?? null,
                     'notas'       => $c->notas ?? null,
+                    'estado'      => $estado,
                 ],
             ];
         }
 
         return $events;
     }
+
 
 
     public function actionMoveAjax()
@@ -185,6 +244,14 @@ class CitaController extends Controller
                 return ['success' => false, 'message' => 'No se pudo guardar.', 'errors' => $cita->getErrors()];
             }
 
+            // Enviar email de confirmación (directo en el controlador)
+            try {
+                \app\services\EmailCitaService::enviarConfirmacionCita($cita);
+            } catch (\Exception $e) {
+                // Log el error pero no falla la respuesta
+                Yii::error('Error enviando email de confirmación: ' . $e->getMessage());
+            }
+
             return ['success' => true, 'id' => $cita->id];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => 'Error servidor: ' . $e->getMessage()];
@@ -229,6 +296,12 @@ class CitaController extends Controller
 
         if (Yii::$app->request->isPost) {
             if ($model->load(Yii::$app->request->post()) && $model->save()) {
+                // Enviar email de confirmación
+                try {
+                    \app\services\EmailCitaService::enviarConfirmacionCita($model);
+                } catch (\Exception $e) {
+                    Yii::error('Error enviando email de confirmación: ' . $e->getMessage());
+                }
                 return $this->redirect(['view', 'id' => $model->id]);
             }
         } else {
@@ -241,9 +314,25 @@ class CitaController extends Controller
     public function actionUpdate($id)
     {
         $model = $this->findModel($id);
+        $modelAnterior = clone $model; // Clonar para comparar cambios
 
-        if (Yii::$app->request->isPost && $model->load(Yii::$app->request->post()) && $model->save()) {
-            return $this->redirect(['view', 'id' => $model->id]);
+        if (Yii::$app->request->isPost && $model->load(Yii::$app->request->post())) {
+            // Verificar si hubo cambios en fecha/hora o servicio
+            $haycambios = ($modelAnterior->inicio !== $model->inicio) ||
+                ($modelAnterior->servicio_id !== $model->servicio_id) ||
+                ($modelAnterior->estado !== $model->estado);
+
+            if ($model->save()) {
+                // Si hay cambios, notificar al paciente
+                if ($haychangios) {
+                    try {
+                        \app\services\ReminderCitaService::enviarNotificacionActualizacion($modelAnterior, $model);
+                    } catch (\Exception $e) {
+                        Yii::error('Error enviando notificación de actualización: ' . $e->getMessage());
+                    }
+                }
+                return $this->redirect(['view', 'id' => $model->id]);
+            }
         }
 
         return $this->render('update', ['model' => $model]);
@@ -334,61 +423,116 @@ class CitaController extends Controller
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
 
-        $data = json_decode(Yii::$app->request->getRawBody(), true);
-        if (!is_array($data)) {
-            return ['success' => false, 'message' => 'Body inválido (JSON requerido).'];
+        try {
+            $data = json_decode(Yii::$app->request->getRawBody(), true);
+            if (!is_array($data)) {
+                return ['success' => false, 'message' => 'Body inválido (JSON requerido).'];
+            }
+
+            $id         = $data['id'] ?? null;
+            $pacienteId = $data['paciente_id'] ?? null;
+            $servicioId = $data['servicio_id'] ?? null;
+            $inicioIn   = $data['inicio'] ?? null; // datetime-local: 2025-12-28T10:30
+            $finIn      = $data['fin'] ?? null;
+            $notas      = $data['notas'] ?? null;
+
+            // ✅ NUEVO: estado y motivo_cancelacion (opcional)
+            $estado = $data['estado'] ?? null; // ej: PENDIENTE, CONFIRMADA, CANCELADA_PACIENTE...
+            $motivoCancelacion = $data['motivo_cancelacion'] ?? null;
+
+            if (!$id || !$pacienteId || !$servicioId || !$inicioIn) {
+                return ['success' => false, 'message' => 'Faltan datos: id, paciente_id, servicio_id, inicio.'];
+            }
+
+            $model = Cita::findOne((int)$id);
+            if (!$model) {
+                return ['success' => false, 'message' => 'Cita no encontrada.'];
+            }
+
+            $paciente = Paciente::findOne((int)$pacienteId);
+            if (!$paciente) {
+                return ['success' => false, 'message' => 'Paciente no existe.'];
+            }
+
+            $servicio = Servicio::findOne((int)$servicioId);
+            if (!$servicio) {
+                return ['success' => false, 'message' => 'Servicio no existe.'];
+            }
+
+            // ✅ Validar estado contra el ENUM del modelo (si viene)
+            if ($estado !== null && !array_key_exists($estado, Cita::optsEstado())) {
+                return ['success' => false, 'message' => 'Estado inválido.'];
+            }
+
+            // ✅ Regla opcional: si se cancela, exigir motivo (puedes quitarlo si no quieres)
+            $estadosCancelados = [Cita::ESTADO_CANCELADA_PACIENTE, Cita::ESTADO_CANCELADA_DENTISTA];
+            if ($estado !== null && in_array($estado, $estadosCancelados, true)) {
+                $motivoCancelacion = trim((string)$motivoCancelacion);
+                if ($motivoCancelacion === '') {
+                    return ['success' => false, 'message' => 'Indica el motivo de cancelación.'];
+                }
+            }
+
+            $inicio = date('Y-m-d H:i:s', strtotime($inicioIn));
+
+            if (!empty($finIn)) {
+                $fin = date('Y-m-d H:i:s', strtotime($finIn));
+            } else {
+                $duracion = (int)($servicio->duracion_min ?? 30);
+                $buffer   = (int)($servicio->buffer_min ?? 0);
+                $fin = date('Y-m-d H:i:s', strtotime($inicio . " +{$duracion} minutes +{$buffer} minutes"));
+            }
+
+            $model->paciente_id = (int)$pacienteId;
+            $model->servicio_id = (int)$servicioId;
+            $model->inicio      = $inicio;
+            $model->fin         = $fin;
+
+            if ($model->hasAttribute('notas')) {
+                $model->notas = $notas;
+            }
+
+            // ✅ NUEVO: guardar estado (si viene)
+            if ($estado !== null && $model->hasAttribute('estado')) {
+                $model->estado = $estado;
+
+                // Si NO está cancelada, limpiamos motivo (opcional)
+                if (!in_array($estado, $estadosCancelados, true) && $model->hasAttribute('motivo_cancelacion')) {
+                    $model->motivo_cancelacion = null;
+                }
+            }
+
+            // ✅ NUEVO: guardar motivo_cancelacion (si aplica)
+            if ($model->hasAttribute('motivo_cancelacion') && in_array($model->estado, $estadosCancelados, true)) {
+                $model->motivo_cancelacion = $motivoCancelacion ?: null;
+            }
+
+            if ($model->hasAttribute('updated_at')) {
+                $model->updated_at = time();
+            }
+
+            if (!$model->save()) {
+                return [
+                    'success' => false,
+                    'message' => 'No se pudo guardar.',
+                    'errors'  => $model->getErrors(),
+                ];
+            }
+
+            return [
+                'success' => true,
+                'cita' => [
+                    'id' => (int)$model->id,
+                    'estado' => $model->estado,
+                    'motivo_cancelacion' => $model->motivo_cancelacion ?? null,
+                    'updated_at' => $model->updated_at ?? null,
+                ],
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Error servidor: ' . $e->getMessage()];
         }
-
-        $id         = $data['id'] ?? null;
-        $pacienteId = $data['paciente_id'] ?? null;
-        $servicioId = $data['servicio_id'] ?? null;
-        $inicioIn   = $data['inicio'] ?? null; // viene como datetime-local: 2025-12-28T10:30
-        $finIn      = $data['fin'] ?? null;
-        $notas      = $data['notas'] ?? null;
-
-        if (!$id || !$pacienteId || !$servicioId || !$inicioIn) {
-            return ['success' => false, 'message' => 'Faltan datos: id, paciente_id, servicio_id, inicio.'];
-        }
-
-        $model = Cita::findOne((int)$id);
-        if (!$model) {
-            return ['success' => false, 'message' => 'Cita no encontrada.'];
-        }
-
-        $paciente = Paciente::findOne((int)$pacienteId);
-        if (!$paciente) return ['success' => false, 'message' => 'Paciente no existe.'];
-
-        $servicio = Servicio::findOne((int)$servicioId);
-        if (!$servicio) return ['success' => false, 'message' => 'Servicio no existe.'];
-
-        $inicio = date('Y-m-d H:i:s', strtotime($inicioIn));
-
-        if (!empty($finIn)) {
-            $fin = date('Y-m-d H:i:s', strtotime($finIn));
-        } else {
-            $duracion = (int)($servicio->duracion_min ?? 30);
-            $buffer   = (int)($servicio->buffer_min ?? 0);
-            $fin = date('Y-m-d H:i:s', strtotime($inicio . " +{$duracion} minutes +{$buffer} minutes"));
-        }
-
-        $model->paciente_id = (int)$pacienteId;
-        $model->servicio_id = (int)$servicioId;
-        $model->inicio      = $inicio;
-        $model->fin         = $fin;
-
-        if ($model->hasAttribute('notas')) {
-            $model->notas = $notas;
-        }
-        if ($model->hasAttribute('updated_at')) {
-            $model->updated_at = time();
-        }
-
-        if (!$model->save()) {
-            return ['success' => false, 'message' => 'No se pudo guardar.', 'errors' => $model->getErrors()];
-        }
-
-        return ['success' => true];
     }
+
 
     public function actionGetFotoSesionAjax($cita_id)
     {

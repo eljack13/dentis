@@ -76,5 +76,4 @@ class Foto extends \yii\db\ActiveRecord
     {
         return $this->hasOne(FotoSesion::class, ['id' => 'foto_sesion_id']);
     }
-
 }

@@ -25,6 +25,9 @@ $config = [
             'identityClass' => 'app\models\Usuario',
             'enableAutoLogin' => true,
             'loginUrl' => ['site/login'],
+            'authTimeout' => 86400,  // 24 horas
+            'absoluteAuthTimeout' => 2592000,  // 30 días (fuerza login después de esto)
+            'idParam' => '__id',
         ],
         'errorHandler' => [
             'errorAction' => 'site/error',

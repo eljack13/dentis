@@ -1,0 +1,42 @@
+# Proteger directorios sensibles
+<FilesMatch "\.(env|php|log|sql)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Proteger carpetas sensibles
+<DirectoryMatch "^(config|runtime|vendor|tests)">
+    Order allow,deny
+    Deny from all
+</DirectoryMatch>
+
+# Reescritura de URLs para Yii
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Si la ruta no es un archivo o directorio real
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # Redirigir a index.php
+    RewriteRule . index.php [L]
+</IfModule>
+
+# Seguridad: Ocultar versión de Apache y PHP
+<IfModule mod_headers.c>
+    Header always unset X-Powered-By
+    Header always unset Server
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Cache browsers - archivos estáticos
+<FilesMatch "\.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg)$">
+    Header set Cache-Control "max-age=31536000, public"
+</FilesMatch>
+
+# No cachear HTML (dinámico)
+<FilesMatch "\.html?$">
+    Header set Cache-Control "max-age=3600, must-revalidate"
+</FilesMatch>
